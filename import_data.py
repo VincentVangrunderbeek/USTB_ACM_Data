@@ -2,7 +2,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-
+import seaborn as sns
 file = 'data.xlsx'
 # import function that reads the Excel file of interest
 def import_data(data):
