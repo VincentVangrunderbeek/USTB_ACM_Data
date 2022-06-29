@@ -8,7 +8,7 @@ plt.rcParams['lines.linewidth'] = 1.5
 from numpy import array
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import pandas as pd
 from keras.models import Sequential
 from keras.layers import Dense
