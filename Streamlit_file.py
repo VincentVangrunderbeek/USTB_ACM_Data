@@ -1,9 +1,9 @@
 
 # Import Libraries
 import streamlit as st
-import matplotlib.pyplot as plt
-plt.style.use('fivethirtyeight')
-plt.rcParams['lines.linewidth'] = 1.5
+# import matplotlib.pyplot as plt
+# plt.style.use('fivethirtyeight')
+# plt.rcParams['lines.linewidth'] = 1.5
 
 from numpy import array
 from sklearn.preprocessing import MinMaxScaler
