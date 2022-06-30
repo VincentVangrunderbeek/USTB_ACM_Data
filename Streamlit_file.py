@@ -31,6 +31,7 @@ st.set_page_config(page_title='The Machine Learning App',
     page_icon="📈")
 
 # import data function
+@st.cache
 def import_data(data, timeframe):
     df = pd.read_excel(data, index_col='date')
 
@@ -69,15 +70,14 @@ def split_sequences(sequences, n_steps):
     return array(X), array(y)
 
 #preproces funtion that takes in the data from the import function and deos the scaling and test train split
-def data_preproces(data, n_steps, train_test_split):
+def data_preproces(data, n_steps, train_test_split, variables):
     
     #only predict for Current of Q235-This needs to be an optino that cna be chosen in the future
-    values = data[['Temperature (°C)', 'Relative Humidity (%)', 'Current Q235 (nA)']].values
+    values = data[variables].values
     
     #scale the data 
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled = scaler.fit_transform(values)
-    
     #define X and y
     X, y = split_sequences(scaled, n_steps)
     
@@ -124,16 +124,16 @@ def predict_rescale(test_x, test_y, model, scaler, n_steps):
     return inv_y, inv_yhat
 
 #plotting function   
-def plot(df, train_x, n_steps, inv_yhat, model_name):    
+def plot(df, train_x, n_steps, inv_yhat, model_name, target_feature):
     # Plot
     index_y = train_x.shape[0]+n_steps-1
     fig, ax = plt.subplots(figsize=(15, 12))
     plt.tick_params(axis='both', which='major', labelsize=15)
     plt.title(model_name, fontsize = 18)
-    plt.plot(df['Current Q235 (nA)'].iloc[index_y:], label='Actual')
-    plt.plot(df['Current Q235 (nA)'].iloc[index_y:].index, inv_yhat, label='Predicted')
+    plt.plot(df[target_feature].iloc[index_y:], label='Actual')
+    plt.plot(df[target_feature].iloc[index_y:].index, inv_yhat, label='Predicted')
     ax.set_xlabel('Date', fontsize=18)
-    ax.set_ylabel('Galvanic current (nA)', fontsize=18)
+    ax.set_ylabel(target_feature, fontsize=18)
     ax.legend(fontsize=12)
     st.pyplot(fig)
     
@@ -156,9 +156,10 @@ def fitting_plot(train_x, train_y, epochs, test_x, test_y, model):
 
 #---------------------------------#
 # Model building
-def vanilla_LSTM(df, n_steps=6, train_test_split=0.8, epochs=30, nodes=50):
+def vanilla_LSTM(df, input_features, target_feature, n_steps=6, train_test_split=0.8, epochs=30, nodes=50):
     #get the values from the data preproces function
-    train_x, train_y, test_x, test_y, scaler, n_features = data_preproces(df, n_steps, train_test_split/100)
+    input_features.append(target_feature)
+    train_x, train_y, test_x, test_y, scaler, n_features = data_preproces(df, n_steps, train_test_split/100, input_features)
     
     # Show the train and testing data on the app
     st.markdown('**1.2. Data splits**')
@@ -169,10 +170,10 @@ def vanilla_LSTM(df, n_steps=6, train_test_split=0.8, epochs=30, nodes=50):
     
     #Show the features and the output
     st.markdown('**1.3. Variable details**:')
-    st.write('X variable')
-    st.info(list(df.columns[0:2]))
-    st.write('Y variable')
-    st.info(df.columns[2])
+    st.write('Input features')
+    st.info(input_features[:-1])
+    st.write('Target variable')
+    st.info(target_feature)
     
     model_name = 'Vanilla LSTM'
     # define model. simple lstm with 50 hidden LSTM units. Dense means that all of the nodes are connected with each other
@@ -203,7 +204,7 @@ def vanilla_LSTM(df, n_steps=6, train_test_split=0.8, epochs=30, nodes=50):
     
     # call the plotting function
     st.markdown('**3.2. Actual vs predicted ACM values**')
-    plot(df, train_x, n_steps, inv_yhat, model_name)
+    plot(df, train_x, n_steps, inv_yhat, model_name, target_feature)
         
 #---------------------------------#
 
@@ -227,13 +228,21 @@ with st.sidebar.header('2. Select model'):
 # Sidebar - Specify parameter settings
 with st.sidebar.header('3. Set Parameters'):
     split_size = st.sidebar.slider('Data split ratio (% for Training Set)', 10, 90, 80, 5)
-    timeframe = st.sidebar.select_slider('What timeframe should it be resampled to (standard 1 min)?', options = ['30min', 'H', '6H', 'D'])
-    
+    timeframe = st.sidebar.select_slider('What timeframe should it be resampled to (standard 1 min)?', options=['30min', 'H', '6H', 'D'])
+    if uploaded_file is not None:
+        df = import_data(uploaded_file, timeframe)
+        columns = df.columns
+        feature_columns = st.sidebar.multiselect('Select the input features', columns)
+        columns_1 = columns.drop(feature_columns)
+        target_column = st.sidebar.selectbox('Select the target variable', columns_1)
+        # columns_2 = columns_1.drop(target_column)
+        # index_column = st.sidebar.selectbox("Select the index column (if time series the dat column)", columns_2)
+
 with st.sidebar.subheader('3.1. Learning Parameters'):
     parameter_n_steps = st.sidebar.slider('Number of lagged time steps per output value (n_steps)', 1, 10, 6, 1)
     parameter_nodes = st.sidebar.slider('Number of nodes in the LSTM layer', 10, 100, 50, 5)
     parameter_epochs = st.sidebar.slider('Number of epochs used during training', 10, 100, 30, 5)
-    parameter_activation = st.sidebar.select_slider('Activation function used in the LSTM layers', options = ['relu', 'tanh', 'sigmoid', 'softmax'])
+    parameter_activation = st.sidebar.select_slider('Activation function used in the LSTM layers', options=['relu', 'tanh', 'sigmoid', 'softmax'])
     parameter_criterion = st.sidebar.select_slider('Performance measure (criterion)', options=['mse', 'mae'])
 
 # Main panel
@@ -242,10 +251,11 @@ with st.sidebar.subheader('3.1. Learning Parameters'):
 st.subheader('1. Dataset')
 
 if uploaded_file is not None:
-    df = import_data(uploaded_file, timeframe)
     st.markdown('**1.1. Glimpse of dataset**')
     st.write(df)
-    vanilla_LSTM(df, parameter_n_steps, split_size, parameter_epochs, parameter_nodes)
+    built_model = st.button("Build your model!")
+    if built_model and feature_columns is not None and target_column is not None:
+        vanilla_LSTM(df, feature_columns, target_column, parameter_n_steps, split_size, parameter_epochs, parameter_nodes)
 else:
     st.info('Awaiting for excel file to be uploaded.')
      
