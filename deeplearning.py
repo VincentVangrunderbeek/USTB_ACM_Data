@@ -22,6 +22,7 @@ from sklearn.metrics import r2_score
 
 models = ('Vanilla LSTM', 'Stacked LSTM', 'Bidirectional LSTM')
 
+
 # function that splits the data in the right way for a LSTM variant to be read
 def split_sequences(sequences, n_steps):
     X, y = list(), list()
@@ -97,7 +98,8 @@ def plot(df, train_x, n_steps, inv_yhat, model_name, target_feature):
     # Plot
     index_y = train_x.shape[0] + n_steps - 1
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df[target_feature].iloc[index_y:].index, y=df[target_feature].iloc[index_y:], name='actual'))
+    fig.add_trace(
+        go.Scatter(x=df[target_feature].iloc[index_y:].index, y=df[target_feature].iloc[index_y:], name='actual'))
     fig.add_trace(go.Scatter(x=df[target_feature].iloc[index_y:].index, y=inv_yhat, name='predicted'))
     fig.update_layout(
         title=model_name,
@@ -130,12 +132,10 @@ def fitting_plot(train_x, train_y, epochs, test_x, test_y, model):
 
 # ---------------------------------#
 # Model building
-def vanilla_LSTM(df, model_selection, input_features, target_feature, n_steps=6, train_test_split=0.8, epochs=30,
-                 nodes=50):
+def LSTM_models(df, model_selection, input_features, target_feature, n_steps=6, train_test_split=0.8, epochs=30, nodes=50):
     # get the values from the data preproces function
     input_features.append(target_feature)
-    train_x, train_y, test_x, test_y, scaler, n_features = data_preproces(df, n_steps, train_test_split / 100,
-                                                                          input_features)
+    train_x, train_y, test_x, test_y, scaler, n_features = data_preproces(df, n_steps, train_test_split / 100, input_features)
 
     # Show the train and testing data on the app
     st.markdown('**1.2. Data splits**')
