@@ -8,19 +8,20 @@ import plotly.graph_objects as go
 from numpy import array
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential
+from keras.layers import Flatten
 from keras.layers import Dense
 from keras.layers import LSTM
 from keras.layers import Bidirectional
-# from keras.layers import TimeDistributed
-# from keras.layers.convolutional import Conv1D
-# from keras.layers.convolutional import MaxPooling1D
-# from keras.layers import ConvLSTM2D
-# from keras.callbacks import EarlyStopping
+from keras.layers import TimeDistributed
+from keras.layers.convolutional import Conv1D
+from keras.layers.convolutional import MaxPooling1D
+from keras.layers import ConvLSTM2D
+from keras.callbacks import EarlyStopping
 from numpy import concatenate
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 
-models = ('Vanilla LSTM', 'Stacked LSTM', 'Bidirectional LSTM')
+models = ('Vanilla LSTM', 'Stacked LSTM', 'Bidirectional LSTM', 'CNN-LSTM', 'Conv-LSTM')
 
 # function that splits the data in the right way for a LSTM variant to be read
 def split_sequences(sequences, n_steps):
@@ -39,7 +40,7 @@ def split_sequences(sequences, n_steps):
 
 
 # preproces funtion that takes in the data from the import function and deos the scaling and test train split
-def data_preproces(data, n_steps, train_test_split, variables):
+def data_preproces(data, n_steps, train_test_split, variables, model_select, n_seq):
     # only predict for Current of Q235-This needs to be an optino that can be chosen in the future
     values = data[variables].values
 
@@ -47,14 +48,24 @@ def data_preproces(data, n_steps, train_test_split, variables):
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled = scaler.fit_transform(values)
     # define X and y
-    X, y = split_sequences(scaled, n_steps)
 
+    # in the case of CNN-LSTM
+    if model_select == 'CNN-LSTM':
+        X, y = split_sequences(scaled, n_steps*n_seq)
+        n_features = X.shape[2]
+        X = X.reshape((X.shape[0], n_seq, n_steps, n_features))
+    elif model_select == 'Conv-LSTM':
+        X, y = split_sequences(scaled, n_steps*n_seq)
+        n_features = X.shape[2]
+        X = X.reshape((X.shape[0], n_seq, 1, n_steps, n_features))
+    else:
+        X, y = split_sequences(scaled, n_steps)
+        n_features = X.shape[2]
     # split the data into training and testing
     train_size = int(len(X) * train_test_split)
     test_size = len(X) - train_size
     train_x, train_y = X[:train_size], y[:train_size]
     test_x, test_y = X[train_size:len(X)], y[train_size:len(y)]
-    n_features = train_x.shape[2]
     return train_x, train_y, test_x, test_y, scaler, n_features
 
 
@@ -70,11 +81,18 @@ def error_function(inv_y, inv_yhat):
 
 
 # Function that predicts and rescales the data
-def predict_rescale(test_x, test_y, model, scaler, n_steps):
+def predict_rescale(test_x, test_y, model, scaler, n_steps, model_select, n_seq):
     # predict the values
     yhat = model.predict(test_x, verbose=0)
     # rescale the forecasted values
-    rescaling = n_steps - 1
+    if model_select == 'CNN-LSTM':
+        rescaling = n_steps * n_seq - 1
+        test_x = test_x.reshape(test_x.shape[0], test_x.shape[1] * test_x.shape[2], test_x.shape[3])
+    elif model_select == 'Conv-LSTM':
+        rescaling = n_steps * n_seq - 1
+        test_x = test_x.reshape(test_x.shape[0], test_x.shape[1] * test_x.shape[3], test_x.shape[4])
+    else:
+        rescaling = n_steps - 1
     test_X = test_x[:, rescaling:]
     test_X = test_X.reshape((test_X.shape[0], test_X.shape[2]))
     test_y = test_y.reshape((len(test_y), 1))
@@ -131,10 +149,10 @@ def fitting_plot(train_x, train_y, epochs, test_x, test_y, model):
 
 # ---------------------------------#
 # Model building
-def LSTM_models(df, model_selection, input_features, target_feature, n_steps=6, train_test_split=0.8, epochs=30, nodes=50):
+def LSTM_models(df, model_selection, input_features, target_feature, n_steps=6, train_test_split=0.8, epochs=30, nodes=50, sequences=2):
     # get the values from the data preproces function
     input_features.append(target_feature)
-    train_x, train_y, test_x, test_y, scaler, n_features = data_preproces(df, n_steps, train_test_split / 100, input_features)
+    train_x, train_y, test_x, test_y, scaler, n_features = data_preproces(df, n_steps, train_test_split / 100, input_features, model_selection, sequences)
 
     # Show the train and testing data on the app
     st.markdown('**1.2. Data splits**')
@@ -173,6 +191,23 @@ def LSTM_models(df, model_selection, input_features, target_feature, n_steps=6, 
         model.add(Bidirectional(LSTM(nodes, activation='relu'), input_shape=(n_steps, n_features)))
         model.add(Dense(1))
         model.compile(optimizer='adam', loss='mse')
+    elif model_selection == models[3]:
+        model_name = models[3]
+        # define model.
+        model = Sequential()
+        model.add(TimeDistributed(Conv1D(filters=64, kernel_size=1, activation='relu'), input_shape=(None, n_steps, n_features)))
+        model.add(TimeDistributed(MaxPooling1D(pool_size=2)))
+        model.add(TimeDistributed(Flatten()))
+        model.add(LSTM(nodes, activation='relu'))
+        model.add(Dense(1))
+        model.compile(optimizer='adam', loss='mse')
+    elif model_selection == models[4]:
+        model_name = models[4]
+        model = Sequential()
+        model.add(ConvLSTM2D(filters=64, kernel_size=(1, 2), activation='relu', input_shape=(sequences, 1, n_steps, n_features)))
+        model.add(Flatten())
+        model.add(Dense(1))
+        model.compile(optimizer='adam', loss='mse')
 
     # information about the training of the model
     st.subheader('2. Model training')
@@ -180,7 +215,7 @@ def LSTM_models(df, model_selection, input_features, target_feature, n_steps=6, 
     model = fitting_plot(train_x, train_y, epochs, test_x, test_y, model)
 
     # call the predicter and rescaler
-    inv_y, inv_yhat = predict_rescale(test_x, test_y, model, scaler, n_steps)
+    inv_y, inv_yhat = predict_rescale(test_x, test_y, model, scaler, n_steps, model_selection, sequences)
 
     # call Test error  function
     r2, error_rmse = error_function(inv_y, inv_yhat)
@@ -232,10 +267,11 @@ with st.sidebar.header('3. Set Parameters'):
 
 with st.sidebar.subheader('3.1 Specific learning Parameters'):
     parameter_n_steps = st.sidebar.slider('Number of lagged time steps per output value (n_steps)', 1, 10, 6, 1)
+    parameter_n_sequences = None
+    if model_selection == 'CNN-LSTM' or model_selection == 'Conv-LSTM':
+        parameter_n_sequences = st.sidebar.slider('Number of sequences per output value (n_seq)', 1, 10, 6, 1)
     parameter_nodes = st.sidebar.slider('Number of nodes in the LSTM layer', 10, 100, 50, 5)
     parameter_epochs = st.sidebar.slider('Number of epochs used during training', 10, 100, 30, 5)
-    parameter_activation = st.sidebar.select_slider('Activation function used in the LSTM layers', options=['relu', 'tanh', 'sigmoid', 'softmax'])
-    parameter_criterion = st.sidebar.select_slider('Performance measure (criterion)', options=['mse', 'mae'])
 
 # show the dataset the user has chosen based on the uploaded data and the selected columns
 st.subheader('Data information')
@@ -250,7 +286,6 @@ st.markdown('**Train test split**')
 train_size = int(len(df) * split_size/100)
 df_train= df[:train_size]
 df_test = df[train_size:len(df)]
-print(len(df_train))
 fig = go.Figure()
 fig.add_trace(
     go.Scatter(x=df_train.index, y=df_train[target_column], name='Train (original)', mode='lines+markers'))
@@ -266,7 +301,7 @@ st.plotly_chart(fig)
 
 built_model = st.button("Build (and download) your model!")
 if built_model and feature_columns is not None and target_column:
-    model = LSTM_models(df, model_selection, feature_columns, target_column, parameter_n_steps, split_size, parameter_epochs, parameter_nodes)
+    model = LSTM_models(df, model_selection, feature_columns, target_column, parameter_n_steps, split_size, parameter_epochs, parameter_nodes, parameter_n_sequences)
     # download the model doesnt work yet
     if download_model:
         model.save(file_name)
