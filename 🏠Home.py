@@ -1,12 +1,8 @@
 # Import Libraries
 import streamlit as st
-from streamlit_pandas_profiling import st_profile_report
 import numpy as np
 import pandas as pd
-import pandas_profiling
-import deeplearning
 
-models = ('Vanilla LSTM', 'Stacked LSTM', 'Bidirectional LSTM')
 # Page layout
 ## Page expands to full width
 st.set_page_config(page_title='The Machine Learning App',
@@ -48,54 +44,28 @@ Try adjusting the hyperparameters!
 # Sidebar - Collects user input features into dataframe
 with st.sidebar.header('1. Upload your data'):
     uploaded_file = st.sidebar.file_uploader("Upload your input excel file", type=["xlsx"])
+    st.session_state['uploaded_file'] = uploaded_file
+
+if 'uploaded_file' in st.session_state and st.session_state['uploaded_file'] is not None:
+    st.session_state['df'] = import_data(uploaded_file)
 
 check_timeframe = st.checkbox("Should the data be resampled to another timeframe? (might be needed to reduce computational time)")
 timeframe = False
 if check_timeframe:
     timeframe = st.select_slider('What timeframe should the data be resampled to?', options=['10min', '30min', 'H', '6H', 'D'])
 # Sidebar - Specify parameter settings
-with st.sidebar.header('2. LSTM model'):
-    model_selection = st.sidebar.selectbox('Select the deep learning model of choice', models)
-
-with st.sidebar.header('3. Set Parameters'):
-    split_size = st.sidebar.slider('Data split ratio (% for Training Set)', 10, 90, 80, 5)
-    if uploaded_file is not None:
-        df = import_data(uploaded_file)
-        columns = df.columns
-        feature_columns = st.sidebar.multiselect('Select the input features', columns)
-        columns_1 = columns.drop(feature_columns)
-        target_column = st.sidebar.selectbox('Select the target variable', columns_1)
-        # columns_2 = columns_1.drop(target_column)
-        # index_column = st.sidebar.selectbox("Select the index column (if time series the dat column)", columns_2)
-
-with st.sidebar.subheader('3.1 Specific learning Parameters'):
-    parameter_n_steps = st.sidebar.slider('Number of lagged time steps per output value (n_steps)', 1, 10, 6, 1)
-    parameter_nodes = st.sidebar.slider('Number of nodes in the LSTM layer', 10, 100, 50, 5)
-    parameter_epochs = st.sidebar.slider('Number of epochs used during training', 10, 100, 30, 5)
-    parameter_activation = st.sidebar.select_slider('Activation function used in the LSTM layers', options=['relu', 'tanh', 'sigmoid', 'softmax'])
-    parameter_criterion = st.sidebar.select_slider('Performance measure (criterion)', options=['mse', 'mae'])
-
 
 # Main panel
-
 # Displays the dataset
-st.subheader('1. Dataset')
+st.subheader('Glimpse of dataset')
 
-if uploaded_file is not None:
-    st.markdown('**1.1. Glimpse of dataset**')
+if 'df' in st.session_state:
     # resample the data to an hourly frame for better GPU processing time
     if timeframe is not False:
-        df = df.resample(timeframe).mean()
-        df.interpolate(inplace=True)
-    st.write(df.head())
-    built_model = st.button("Build your model!")
-    pandas_profile = st.checkbox("Show exploratory data analysis report")
-    if pandas_profile:
-        pr = df.profile_report()
-        st_profile_report(pr)
-
-    if built_model and feature_columns is not None and target_column:
-        deeplearning.LSTM_models(df, model_selection, feature_columns, target_column, parameter_n_steps, split_size, parameter_epochs, parameter_nodes)
+        df_1 = st.session_state.df.resample(timeframe).mean()
+        df_1.interpolate(inplace=True)
+        st.session_state['df'] = df_1
+    st.write(st.session_state.df.head())
 
 else:
     st.info('Awaiting for excel file to be uploaded.')

@@ -1,12 +1,12 @@
+import netron
+import os
+import pandas as pd
 # Import Libraries
 import streamlit as st
-import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
-
 from numpy import array
 from sklearn.preprocessing import MinMaxScaler
-import matplotlib.pyplot as plt
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
@@ -21,7 +21,6 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 
 models = ('Vanilla LSTM', 'Stacked LSTM', 'Bidirectional LSTM')
-
 
 # function that splits the data in the right way for a LSTM variant to be read
 def split_sequences(sequences, n_steps):
@@ -99,8 +98,8 @@ def plot(df, train_x, n_steps, inv_yhat, model_name, target_feature):
     index_y = train_x.shape[0] + n_steps - 1
     fig = go.Figure()
     fig.add_trace(
-        go.Scatter(x=df[target_feature].iloc[index_y:].index, y=df[target_feature].iloc[index_y:], name='actual'))
-    fig.add_trace(go.Scatter(x=df[target_feature].iloc[index_y:].index, y=inv_yhat, name='predicted'))
+        go.Scatter(x=df[target_feature].iloc[index_y:].index, y=df[target_feature].iloc[index_y:], name='actual', mode='lines+markers'))
+    fig.add_trace(go.Scatter(x=df[target_feature].iloc[index_y:].index, y=inv_yhat, name='predicted', mode='lines+markers'))
     fig.update_layout(
         title=model_name,
         title_x=0.5,
@@ -118,8 +117,8 @@ def fitting_plot(train_x, train_y, epochs, test_x, test_y, model):
     # Plot
     fig = go.Figure()
     fig.add_trace(
-        go.Scatter(y=history.history['loss'], name='train'))
-    fig.add_trace(go.Scatter(y=history.history['val_loss'], name='test'))
+        go.Scatter(y=history.history['loss'], name='train', mode='lines+markers'))
+    fig.add_trace(go.Scatter(y=history.history['val_loss'], name='test', mode='lines+markers'))
     fig.update_layout(
         title='Model loss',
         title_x=0.5,
@@ -175,6 +174,7 @@ def LSTM_models(df, model_selection, input_features, target_feature, n_steps=6, 
         model.add(Dense(1))
         model.compile(optimizer='adam', loss='mse')
 
+    # information about the training of the model
     st.subheader('2. Model training')
     # call the fit and history plotter
     model = fitting_plot(train_x, train_y, epochs, test_x, test_y, model)
@@ -184,7 +184,6 @@ def LSTM_models(df, model_selection, input_features, target_feature, n_steps=6, 
 
     # call Test error  function
     r2, error_rmse = error_function(inv_y, inv_yhat)
-    #     error = 'R-squared = ' + str(round(r2, ndigits=2)) + ', RMSE = ' + str(round(error_rmse))
 
     st.subheader('3. Model Performance test set')
     st.markdown('**3.1. Test set $R^2$ and RMSE**')
@@ -195,5 +194,81 @@ def LSTM_models(df, model_selection, input_features, target_feature, n_steps=6, 
     st.info(round(error_rmse))
 
     # call the plotting function
-    st.markdown('**3.2. Actual vs predicted ACM values**')
+    st.markdown('**4.2. Actual vs predicted ACM values**')
     plot(df, train_x, n_steps, inv_yhat, model_name, target_feature)
+
+    return model
+
+# User interface
+st.write("""
+# Deep learning models
+
+In this implementation, A *LSTM deep learning network* from the Keras library is used to build a supervised machine learning regression model that is able to predict the ACM current from temperature and relative humidity input data. 
+
+Try adjusting the hyperparameters!
+""")
+
+if 'df' not in st.session_state:
+    st.info('Go back to Home page and upload a dataset')
+    st.stop()
+else:
+    df = st.session_state.df
+
+with st.sidebar.header('2. LSTM model'):
+    model_selection = st.sidebar.selectbox('Select the deep learning model of choice', models)
+    username = os.getlogin()
+    file_name = 'C:/Users/' + username + '/Downloads/model.h5'
+    download_model = st.sidebar.checkbox(f'Do you wish to download and the model see its architecture after building (path is {file_name})')
+
+with st.sidebar.header('3. Set Parameters'):
+    split_size = st.sidebar.slider('Data split ratio (% for Training Set)', 10, 90, 80, 5)
+    if df is not None:
+        columns = df.columns
+        feature_columns = st.sidebar.multiselect('Select the input features', columns)
+        columns_1 = columns.drop(feature_columns)
+        target_column = st.sidebar.selectbox('Select the target variable', columns_1)
+        # columns_2 = columns_1.drop(target_column)
+        # index_column = st.sidebar.selectbox("Select the index column (if time series the dat column)", columns_2)
+
+with st.sidebar.subheader('3.1 Specific learning Parameters'):
+    parameter_n_steps = st.sidebar.slider('Number of lagged time steps per output value (n_steps)', 1, 10, 6, 1)
+    parameter_nodes = st.sidebar.slider('Number of nodes in the LSTM layer', 10, 100, 50, 5)
+    parameter_epochs = st.sidebar.slider('Number of epochs used during training', 10, 100, 30, 5)
+    parameter_activation = st.sidebar.select_slider('Activation function used in the LSTM layers', options=['relu', 'tanh', 'sigmoid', 'softmax'])
+    parameter_criterion = st.sidebar.select_slider('Performance measure (criterion)', options=['mse', 'mae'])
+
+# show the dataset the user has chosen based on the uploaded data and the selected columns
+st.subheader('Data information')
+col1, col2 = st.columns(2)
+col1.markdown('**Input feature(s)**')
+col2.markdown('**Target variables(s)**')
+col1.write(df[feature_columns].head())
+col2.write(df[target_column].head())
+
+# show the train test split distribution
+st.markdown('**Train test split**')
+train_size = int(len(df) * split_size/100)
+df_train= df[:train_size]
+df_test = df[train_size:len(df)]
+print(len(df_train))
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(x=df_train.index, y=df_train[target_column], name='Train (original)', mode='lines+markers'))
+fig.add_trace(go.Scatter(x=df_test.index, y=df_test[target_column], name='Test (original)', mode='lines+markers'))
+fig.update_layout(
+    title='Train/test split',
+    title_x=0.5,
+    yaxis_title=target_column
+)
+st.plotly_chart(fig)
+
+
+
+built_model = st.button("Build (and download) your model!")
+if built_model and feature_columns is not None and target_column:
+    model = LSTM_models(df, model_selection, feature_columns, target_column, parameter_n_steps, split_size, parameter_epochs, parameter_nodes)
+    # download the model doesnt work yet
+    if download_model:
+        model.save(file_name)
+        netron.start(file_name)
+
