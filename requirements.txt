@@ -13,5 +13,4 @@ plotly~=5.9.0
 scikit-learn~=1.1.1
 prophet==1.1
 pycaret==3.0.0rc3
-pycaret-ts-alpha==3.0.0.dev1649017462
 netron==5.9.4
